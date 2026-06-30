@@ -1,5 +1,5 @@
 # local_ocr — 開発コンテキスト
-最終更新: 2026-06-30
+最終更新: 2026-07-01
 
 ## 現在の状態
 
@@ -41,7 +41,7 @@ Phase 1 MVP実装・実機検証・ローカル配備完了。mainへ反映済�
 
 ## 最近の変更履歴
 
-- `2026-06-30` mainへ反映し、server_manager APIから起動。localhostと
+- `2026-07-01` mainへ反映し、server_manager APIから起動。localhostと
   Tailscale IPのトップ画面・`/api/health`がHTTP 200になることを確認
 - `2026-06-30` Phase 1 MVPを新規実装（`server.mjs`, `static/index.html`,
   `tests/test_local_ocr.mjs`）。server_manager登録、doctor、実Ollama OCRまで検証
