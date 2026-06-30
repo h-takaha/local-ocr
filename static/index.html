@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#18181b">
+  <title>ローカルOCR</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #09090b;
+      color: #f4f4f5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top, rgba(16, 185, 129, .12), transparent 32rem),
+        #09090b;
+    }
+    main {
+      width: min(100%, 760px);
+      margin: 0 auto;
+      padding: max(18px, env(safe-area-inset-top)) 16px max(28px, env(safe-area-inset-bottom));
+    }
+    header { margin-bottom: 18px; }
+    h1 {
+      margin: 0 0 5px;
+      font-size: clamp(1.55rem, 6vw, 2rem);
+      letter-spacing: .02em;
+    }
+    .lead, .hint, .meta { color: #a1a1aa; }
+    .lead { margin: 0; font-size: .95rem; line-height: 1.55; }
+    .card {
+      margin-top: 14px;
+      padding: 16px;
+      border: 1px solid #3f3f46;
+      border-radius: 16px;
+      background: rgba(24, 24, 27, .94);
+      box-shadow: 0 18px 42px rgba(0, 0, 0, .22);
+    }
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 10px;
+      border: 1px solid #3f3f46;
+      border-radius: 999px;
+      color: #d4d4d8;
+      background: #27272a;
+      font-size: .82rem;
+      white-space: nowrap;
+    }
+    .badge.ready { color: #a7f3d0; border-color: #047857; background: #064e3b55; }
+    .badge.error { color: #fde68a; border-color: #b45309; background: #78350f55; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+    .button-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    button, .file-button {
+      min-height: 48px;
+      padding: 11px 14px;
+      border: 1px solid #52525b;
+      border-radius: 12px;
+      color: #fafafa;
+      background: #27272a;
+      font: inherit;
+      font-weight: 700;
+      text-align: center;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    button:hover, .file-button:hover { background: #3f3f46; }
+    button:focus-visible, .file-button:focus-within, textarea:focus {
+      outline: 3px solid #34d39988;
+      outline-offset: 2px;
+    }
+    button.primary {
+      width: 100%;
+      margin-top: 12px;
+      border-color: #10b981;
+      color: #052e16;
+      background: #34d399;
+    }
+    button.primary:hover { background: #6ee7b7; }
+    button:disabled { cursor: not-allowed; opacity: .45; }
+    input[type="file"] {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+    }
+    #preview-wrap {
+      display: none;
+      margin-top: 14px;
+      overflow: hidden;
+      border: 1px solid #3f3f46;
+      border-radius: 12px;
+      background: #000;
+    }
+    #preview {
+      display: block;
+      width: 100%;
+      max-height: 48vh;
+      object-fit: contain;
+    }
+    .meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 9px 11px;
+      background: #18181b;
+      font-size: .78rem;
+    }
+    #message {
+      min-height: 1.5em;
+      margin: 12px 2px 0;
+      color: #d4d4d8;
+      font-size: .9rem;
+    }
+    #message.error { color: #fca5a5; }
+    #message.success { color: #a7f3d0; }
+    #result-card { display: none; }
+    .result-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+    h2 { margin: 0; font-size: 1.05rem; }
+    textarea {
+      width: 100%;
+      min-height: 260px;
+      resize: vertical;
+      padding: 13px;
+      border: 1px solid #52525b;
+      border-radius: 12px;
+      color: #fafafa;
+      background: #09090b;
+      font: 1rem/1.65 ui-monospace, "SFMono-Regular", Consolas, monospace;
+    }
+    .actions {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .warning {
+      margin: 12px 0 0;
+      padding: 10px 12px;
+      border-left: 3px solid #f59e0b;
+      border-radius: 6px;
+      color: #fef3c7;
+      background: #78350f33;
+      font-size: .85rem;
+      line-height: 1.5;
+    }
+    .privacy {
+      margin: 14px 2px 0;
+      color: #71717a;
+      font-size: .78rem;
+      line-height: 1.5;
+    }
+    @media (max-width: 480px) {
+      .actions { grid-template-columns: 1fr 1fr; }
+      .actions button:last-child { grid-column: 1 / -1; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>ローカルOCR</h1>
+      <p class="lead">写真を自宅PCのローカルLLMで文字にします。画像は保存しません。</p>
+    </header>
+
+    <section class="card" aria-labelledby="upload-title">
+      <div class="status-row">
+        <h2 id="upload-title">1. 写真を用意</h2>
+        <span id="health" class="badge"><span class="dot"></span>確認中</span>
+      </div>
+      <div class="button-grid">
+        <label class="file-button" for="camera-input">📷 カメラで撮る</label>
+        <input id="camera-input" type="file" accept="image/*" capture="environment">
+        <label class="file-button" for="gallery-input">🖼️ 画像を選ぶ</label>
+        <input id="gallery-input" type="file" accept="image/*">
+      </div>
+
+      <div id="preview-wrap">
+        <img id="preview" alt="OCRする画像のプレビュー">
+        <div class="meta">
+          <span id="image-size"></span>
+          <span>送信用に自動縮小</span>
+        </div>
+      </div>
+
+      <button id="ocr-button" class="primary" type="button" disabled>2. 文字を抽出する</button>
+      <p id="message" aria-live="polite">画像を選択してください。</p>
+      <p class="privacy">Tailscale内で自宅PCへ送信し、Ollamaで処理します。外部AI APIやクラウドストレージは使いません。</p>
+    </section>
+
+    <section id="result-card" class="card" aria-labelledby="result-title">
+      <div class="result-head">
+        <h2 id="result-title">3. 抽出結果</h2>
+        <span id="result-meta" class="hint"></span>
+      </div>
+      <textarea id="result" spellcheck="false" aria-label="抽出したテキスト"></textarea>
+      <div class="actions">
+        <button id="copy-button" type="button">コピー</button>
+        <button id="download-button" type="button">TXT保存</button>
+        <button id="reset-button" type="button">次の画像</button>
+      </div>
+      <p class="warning">重要な日付・金額・固有名詞は、元画像と照合してください。ローカルLLMでも読み違いは起こります。</p>
+    </section>
+  </main>
+
+  <script>
+    const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
+    const MAX_LONG_EDGE = 3000;
+    const JPEG_QUALITY = 0.92;
+    const cameraInput = document.getElementById("camera-input");
+    const galleryInput = document.getElementById("gallery-input");
+    const previewWrap = document.getElementById("preview-wrap");
+    const preview = document.getElementById("preview");
+    const imageSize = document.getElementById("image-size");
+    const ocrButton = document.getElementById("ocr-button");
+    const message = document.getElementById("message");
+    const healthBadge = document.getElementById("health");
+    const resultCard = document.getElementById("result-card");
+    const resultText = document.getElementById("result");
+    const resultMeta = document.getElementById("result-meta");
+    let preparedImage = null;
+    let running = false;
+
+    function setMessage(text, kind = "") {
+      message.textContent = text;
+      message.className = kind;
+    }
+
+    function formatBytes(bytes) {
+      if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
+      return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+    }
+
+    function blobToDataUrl(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error("画像を読み込めませんでした。"));
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    function loadImage(file) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const image = new Image();
+        image.onload = () => {
+          URL.revokeObjectURL(url);
+          resolve(image);
+        };
+        image.onerror = () => {
+          URL.revokeObjectURL(url);
+          reject(new Error("この画像形式をブラウザで開けません。JPEGまたはPNGでお試しください。"));
+        };
+        image.src = url;
+      });
+    }
+
+    async function prepareFile(file) {
+      if (!file) return;
+      if (!file.type.startsWith("image/")) {
+        setMessage("画像ファイルを選択してください。", "error");
+        return;
+      }
+      if (file.size > MAX_SOURCE_BYTES) {
+        setMessage("画像は20MB以下にしてください。", "error");
+        return;
+      }
+
+      ocrButton.disabled = true;
+      setMessage("画像を準備しています…");
+      try {
+        const source = await loadImage(file);
+        const longEdge = Math.max(source.naturalWidth, source.naturalHeight);
+        const scale = Math.min(1, MAX_LONG_EDGE / longEdge);
+        const width = Math.max(1, Math.round(source.naturalWidth * scale));
+        const height = Math.max(1, Math.round(source.naturalHeight * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d", { alpha: false });
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, width, height);
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = "high";
+        context.drawImage(source, 0, 0, width, height);
+        const blob = await new Promise((resolve) =>
+          canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY),
+        );
+        if (!blob) throw new Error("画像の変換に失敗しました。");
+        const dataUrl = await blobToDataUrl(blob);
+        preparedImage = { image: dataUrl, width, height, bytes: blob.size };
+        preview.src = dataUrl;
+        previewWrap.style.display = "block";
+        imageSize.textContent = `${width}×${height} / ${formatBytes(blob.size)}`;
+        ocrButton.disabled = false;
+        setMessage("準備できました。「文字を抽出する」を押してください。", "success");
+      } catch (error) {
+        preparedImage = null;
+        previewWrap.style.display = "none";
+        setMessage(error.message || "画像の準備に失敗しました。", "error");
+      } finally {
+        cameraInput.value = "";
+        galleryInput.value = "";
+      }
+    }
+
+    async function runOcr() {
+      if (!preparedImage || running) return;
+      running = true;
+      ocrButton.disabled = true;
+      resultCard.style.display = "none";
+      const started = Date.now();
+      const timer = setInterval(() => {
+        const seconds = Math.floor((Date.now() - started) / 1000);
+        setMessage(`ローカルLLMで処理中… ${seconds}秒`);
+      }, 1000);
+      setMessage("ローカルLLMで処理中… 0秒");
+
+      try {
+        const response = await fetch("/api/ocr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(preparedImage),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(payload.error || "OCR処理に失敗しました。");
+        }
+        resultText.value = payload.text;
+        resultMeta.textContent = `${(payload.elapsed_ms / 1000).toFixed(1)}秒`;
+        resultCard.style.display = "block";
+        setMessage("文字を抽出しました。", "success");
+        resultCard.scrollIntoView({ behavior: "smooth", block: "start" });
+      } catch (error) {
+        setMessage(error.message || "通信に失敗しました。", "error");
+      } finally {
+        clearInterval(timer);
+        running = false;
+        ocrButton.disabled = !preparedImage;
+      }
+    }
+
+    async function copyResult() {
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(resultText.value);
+        } else {
+          resultText.focus();
+          resultText.select();
+          document.execCommand("copy");
+        }
+        setMessage("抽出結果をコピーしました。", "success");
+      } catch {
+        setMessage("コピーできませんでした。テキスト欄を長押ししてコピーしてください。", "error");
+      }
+    }
+
+    function downloadResult() {
+      const blob = new Blob([resultText.value], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      link.href = url;
+      link.download = `ocr-${stamp}.txt`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function reset() {
+      preparedImage = null;
+      preview.removeAttribute("src");
+      previewWrap.style.display = "none";
+      resultCard.style.display = "none";
+      resultText.value = "";
+      ocrButton.disabled = true;
+      setMessage("画像を選択してください。");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    async function checkHealth() {
+      try {
+        const response = await fetch("/api/health", { cache: "no-store" });
+        const payload = await response.json();
+        if (!response.ok) throw new Error();
+        healthBadge.className = "badge ready";
+        healthBadge.innerHTML = '<span class="dot"></span>準備OK';
+        healthBadge.title = payload.model;
+      } catch {
+        healthBadge.className = "badge error";
+        healthBadge.innerHTML = '<span class="dot"></span>要確認';
+        healthBadge.title = "OllamaまたはOCRモデルを確認してください";
+      }
+    }
+
+    cameraInput.addEventListener("change", (event) => prepareFile(event.target.files[0]));
+    galleryInput.addEventListener("change", (event) => prepareFile(event.target.files[0]));
+    ocrButton.addEventListener("click", runOcr);
+    document.getElementById("copy-button").addEventListener("click", copyResult);
+    document.getElementById("download-button").addEventListener("click", downloadResult);
+    document.getElementById("reset-button").addEventListener("click", reset);
+    checkHealth();
+  </script>
+</body>
+</html>
