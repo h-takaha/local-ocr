@@ -3,8 +3,8 @@
 
 ## 現在の状態
 
-Phase 1 MVP実装・実機検証完了。`codex/local-ocr`ブランチにあり、mainへのマージと
-server_manager再起動後にスマホから利用可能になる。
+Phase 1 MVP実装・実機検証・ローカル配備完了。mainへ反映済みで、server_managerから
+`local_ocr`を起動中。Tailscale経由の`http://100.78.223.50:8005`で利用できる。
 
 スマホのWeb UIから画像を撮影・選択し、自宅PCのOllama `qwen3-vl:8b`でOCRする。
 画像と結果は永続保存せず、外部AI APIも使用しない。
@@ -41,5 +41,7 @@ server_manager再起動後にスマホから利用可能になる。
 
 ## 最近の変更履歴
 
+- `2026-06-30` mainへ反映し、server_manager APIから起動。localhostと
+  Tailscale IPのトップ画面・`/api/health`がHTTP 200になることを確認
 - `2026-06-30` Phase 1 MVPを新規実装（`server.mjs`, `static/index.html`,
   `tests/test_local_ocr.mjs`）。server_manager登録、doctor、実Ollama OCRまで検証
