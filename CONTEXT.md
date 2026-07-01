@@ -6,7 +6,7 @@
 Phase 1 MVP実装・実機検証・ローカル配備完了。mainへ反映済みで、server_managerから
 `local_ocr`を起動中。Tailscale経由の`http://100.78.223.50:8005`で利用できる。
 
-スマホのWeb UIから画像を撮影・選択し、自宅PCのOllama `qwen3-vl:8b`でOCRする。
+スマホのWeb UIから画像を撮影・選択し、自宅PCのOllama `qwen3.5:9b`でOCRする。
 画像と結果は永続保存せず、外部AI APIも使用しない。
 
 ## 開発フェーズ
@@ -14,6 +14,7 @@ Phase 1 MVP実装・実機検証・ローカル配備完了。mainへ反映済�
 | Phase | 状態 | 内容 |
 |---|---|---|
 | Phase 1 | 完了 | 1画像OCR、スマホUI、Tailscale運用、doctor、server_manager登録 |
+| Phase 1.1 | 完了 | スマホ写真の空応答修正、`qwen3.5:9b`移行 |
 | Phase 2 | 未着手 | 実スマホ・モバイル回線での運用確認 |
 | 将来候補 | 未着手 | 複数画像、履歴、表形式出力、Tailscale Serve |
 
@@ -23,7 +24,8 @@ Phase 1 MVP実装・実機検証・ローカル配備完了。mainへ反映済�
 - メイン作業ディレクトリを`main`のまま維持し、`C:/git/worktrees/local-ocr`
   （`codex/local-ocr`）で作業した
 - 外部ライブラリを追加せず、Node.js 24の標準HTTP・fetch・test機能で実装
-- 既存の日本語OCR実績がある`qwen3-vl:8b`を固定モデルにした
+- 初期モデル`qwen3-vl:8b`は思考出力による空応答が発生したため、添付画像で比較して
+  思考なし・高速・正常応答を確認した`qwen3.5:9b`へ切り替えた
 - 8GB VRAMを競合させないため同時処理は1件
 - スマホ側で長辺3,000px・JPEG品質0.92へ変換し、転送量と画像トークンを抑える
 - APIは同期式。画像・OCR結果・履歴をディスクへ保存しない
@@ -31,6 +33,8 @@ Phase 1 MVP実装・実機検証・ローカル配備完了。mainへ反映済�
 
 ## 既知の注意点・ハマりポイント
 
+- `qwen3-vl:8b`は`think:false`と`/no_think`を指定しても大量の思考文を生成し、
+  出力上限到達時に最終`response`が空になる。OCR既定モデルには戻さない
 - 自宅PCが起動中かつスリープしていなければ外出先から利用できない。遠隔起動は対象外
 - `qwen3-vl:8b`の既定context 4,096では実画像が4,117 tokensとなり処理前に失敗した。
   Ollama payloadで`num_ctx: 8192`を必ず指定する
@@ -41,6 +45,8 @@ Phase 1 MVP実装・実機検証・ローカル配備完了。mainへ反映済�
 
 ## 最近の変更履歴
 
+- `2026-07-01` スマホ写真で`empty_ocr_result`が発生する問題を修正。既定モデルを
+  `qwen3-vl:8b`から`qwen3.5:9b`へ変更し、Tailscale経由の添付画像OCR成功を確認
 - `2026-07-01` mainへ反映し、server_manager APIから起動。localhostと
   Tailscale IPのトップ画面・`/api/health`がHTTP 200になることを確認
 - `2026-06-30` Phase 1 MVPを新規実装（`server.mjs`, `static/index.html`,
