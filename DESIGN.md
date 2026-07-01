@@ -12,7 +12,7 @@ OCRしてテキストを返す。公開クラウド、外部LLM API、画像の�
   └─ Tailscale
       └─ local_ocr / Node.js :8005
           └─ Ollama API 127.0.0.1:11434
-              └─ qwen3-vl:8b / RTX 5060 Laptop GPU
+              └─ qwen3.5:9b / RTX 5060 Laptop GPU
 ```
 
 ```text
@@ -48,7 +48,7 @@ tools/local_ocr/
 ```json
 {
   "text": "抽出本文",
-  "model": "qwen3-vl:8b",
+  "model": "qwen3.5:9b",
   "elapsed_ms": 33000
 }
 ```
@@ -58,7 +58,7 @@ tools/local_ocr/
 
 ## モデル設定
 
-- モデル: `qwen3-vl:8b`
+- モデル: `qwen3.5:9b`
 - thinking: 無効
 - temperature: `0`
 - context: `8192`
@@ -66,7 +66,9 @@ tools/local_ocr/
 - keep alive: `2m`
 
 `4096` contextでは実画像の入力が4,117 tokensとなり拒否されたため、実機確認後に`8192`へ固定した。
-モデルは約6.4GBをGPUへ載せ、同時OCRを1件に制限して8GB VRAM内で運用する。
+初期モデル`qwen3-vl:8b`は`think:false`を無視して思考出力を生成し、スマホ写真で最終応答が
+空になるケースがあった。同じ画像を`qwen3.5:9b`で検証すると、思考出力なし・約6.6秒で完走したため切り替えた。
+モデルは約6.6GBをGPUへ載せ、同時OCRを1件に制限して8GB VRAM内で運用する。
 
 ## 設計判断
 

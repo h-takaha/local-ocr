@@ -9,7 +9,7 @@
 
 - 自宅PCが起動中でスリープしていない
 - スマホと自宅PCの両方でTailscaleが接続済み
-- 自宅PCでOllamaが起動し、`qwen3-vl:8b`がインストール済み
+- 自宅PCでOllamaが起動し、`qwen3.5:9b`がインストール済み
 - `server_manager`が起動済み
 
 スマホで次を開く。
@@ -63,7 +63,7 @@ node --test tests/test_local_ocr.mjs
 |---|---:|---|
 | `LOCAL_OCR_HOST` | `127.0.0.1` | 待受ホスト |
 | `LOCAL_OCR_PORT` / `PORT` | `8005` | 待受ポート |
-| `LOCAL_OCR_MODEL` | `qwen3-vl:8b` | Ollamaモデル |
+| `LOCAL_OCR_MODEL` | `qwen3.5:9b` | Ollamaモデル |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama API |
 | `LOCAL_OCR_TIMEOUT_MS` | `360000` | 推論タイムアウト |
 | `LOCAL_OCR_MAX_IMAGE_BYTES` | `20971520` | デコード後画像上限 |

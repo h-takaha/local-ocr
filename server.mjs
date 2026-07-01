@@ -33,7 +33,7 @@ export function getConfig(overrides = {}) {
   return {
     host: overrides.host ?? process.env.LOCAL_OCR_HOST ?? "127.0.0.1",
     port: Number(overrides.port ?? process.env.LOCAL_OCR_PORT ?? process.env.PORT ?? 8005),
-    model: overrides.model ?? process.env.LOCAL_OCR_MODEL ?? "qwen3-vl:8b",
+    model: overrides.model ?? process.env.LOCAL_OCR_MODEL ?? "qwen3.5:9b",
     ollamaBaseUrl:
       overrides.ollamaBaseUrl ??
       process.env.OLLAMA_BASE_URL ??
