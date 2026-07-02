@@ -68,6 +68,47 @@
       grid-template-columns: 1fr 1fr;
       gap: 10px;
     }
+    .mode-picker {
+      margin: 14px 0 0;
+      padding: 0;
+      border: 0;
+    }
+    .mode-picker legend {
+      margin-bottom: 8px;
+      color: #d4d4d8;
+      font-size: .86rem;
+      font-weight: 700;
+    }
+    .mode-options {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .mode-option {
+      display: block;
+      padding: 10px;
+      border: 1px solid #3f3f46;
+      border-radius: 10px;
+      color: #d4d4d8;
+      background: #18181b;
+      cursor: pointer;
+    }
+    .mode-option:has(input:checked) {
+      border-color: #10b981;
+      background: #064e3b44;
+    }
+    .mode-option input {
+      margin-right: 6px;
+      accent-color: #34d399;
+    }
+    .mode-option small {
+      display: block;
+      margin: 5px 0 0 23px;
+      color: #a1a1aa;
+      font-size: .76rem;
+      line-height: 1.4;
+    }
+    .mode-option strong { font-size: .92rem; }
     button, .file-button {
       min-height: 48px;
       padding: 11px 14px;
@@ -199,11 +240,31 @@
         <input id="gallery-input" type="file" accept="image/*">
       </div>
 
+      <fieldset class="mode-picker">
+        <legend>読み取りモード</legend>
+        <div class="mode-options">
+          <label class="mode-option">
+            <input type="radio" name="processing-mode" value="normal" checked>
+            <span>
+              <strong>通常</strong>
+              <small>写真の色を保ったまま送信</small>
+            </span>
+          </label>
+          <label class="mode-option">
+            <input type="radio" name="processing-mode" value="high">
+            <span>
+              <strong>高精度</strong>
+              <small>白黒・コントラスト・輪郭を補正</small>
+            </span>
+          </label>
+        </div>
+      </fieldset>
+
       <div id="preview-wrap">
         <img id="preview" alt="OCRする画像のプレビュー">
         <div class="meta">
           <span id="image-size"></span>
-          <span>送信用に自動縮小</span>
+          <span id="processing-label"></span>
         </div>
       </div>
 
@@ -227,15 +288,20 @@
     </section>
   </main>
 
-  <script>
+  <script type="module">
+    import {
+      calculateOutputSize,
+      enhanceRgbaForOcr,
+    } from "./image-processing.mjs";
     const MAX_SOURCE_BYTES = 20 * 1024 * 1024;
-    const MAX_LONG_EDGE = 3000;
     const JPEG_QUALITY = 0.92;
     const cameraInput = document.getElementById("camera-input");
     const galleryInput = document.getElementById("gallery-input");
     const previewWrap = document.getElementById("preview-wrap");
     const preview = document.getElementById("preview");
     const imageSize = document.getElementById("image-size");
+    const processingLabel = document.getElementById("processing-label");
+    const modeInputs = [...document.querySelectorAll('input[name="processing-mode"]')];
     const ocrButton = document.getElementById("ocr-button");
     const message = document.getElementById("message");
     const healthBadge = document.getElementById("health");
@@ -243,6 +309,8 @@
     const resultText = document.getElementById("result");
     const resultMeta = document.getElementById("result-meta");
     let preparedImage = null;
+    let selectedFile = null;
+    let preparationGeneration = 0;
     let running = false;
 
     function setMessage(text, kind = "") {
@@ -253,6 +321,21 @@
     function formatBytes(bytes) {
       if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)}KB`;
       return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+    }
+
+    function selectedMode() {
+      const selected = modeInputs.find((input) => input.checked);
+      return selected?.value === "high" ? "high" : "normal";
+    }
+
+    function modeLabel(mode) {
+      return mode === "high" ? "高精度補正" : "通常";
+    }
+
+    function setModeInputsDisabled(disabled) {
+      for (const input of modeInputs) {
+        input.disabled = disabled;
+      }
     }
 
     function blobToDataUrl(blob) {
@@ -282,57 +365,93 @@
 
     async function prepareFile(file) {
       if (!file) return;
+      if (running) {
+        setMessage("OCR処理中です。完了してから画像を変更してください。", "error");
+        return;
+      }
       if (!file.type.startsWith("image/")) {
+        selectedFile = null;
         setMessage("画像ファイルを選択してください。", "error");
         return;
       }
       if (file.size > MAX_SOURCE_BYTES) {
+        selectedFile = null;
         setMessage("画像は20MB以下にしてください。", "error");
         return;
       }
 
+      selectedFile = file;
+      const currentPreparation = ++preparationGeneration;
+      const mode = selectedMode();
+      setModeInputsDisabled(true);
       ocrButton.disabled = true;
-      setMessage("画像を準備しています…");
+      setMessage(mode === "high" ? "高精度補正を適用しています…" : "画像を準備しています…");
       try {
         const source = await loadImage(file);
-        const longEdge = Math.max(source.naturalWidth, source.naturalHeight);
-        const scale = Math.min(1, MAX_LONG_EDGE / longEdge);
-        const width = Math.max(1, Math.round(source.naturalWidth * scale));
-        const height = Math.max(1, Math.round(source.naturalHeight * scale));
+        if (currentPreparation !== preparationGeneration) return;
+        const { width, height } = calculateOutputSize(
+          source.naturalWidth,
+          source.naturalHeight,
+          mode === "high",
+        );
         const canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = height;
-        const context = canvas.getContext("2d", { alpha: false });
+        const context = canvas.getContext("2d", {
+          alpha: false,
+          willReadFrequently: mode === "high",
+        });
         context.fillStyle = "#ffffff";
         context.fillRect(0, 0, width, height);
         context.imageSmoothingEnabled = true;
         context.imageSmoothingQuality = "high";
         context.drawImage(source, 0, 0, width, height);
+        if (mode === "high") {
+          const imageData = context.getImageData(0, 0, width, height);
+          enhanceRgbaForOcr(imageData.data, width, height);
+          context.putImageData(imageData, 0, 0);
+        }
         const blob = await new Promise((resolve) =>
           canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY),
         );
         if (!blob) throw new Error("画像の変換に失敗しました。");
+        if (currentPreparation !== preparationGeneration) return;
         const dataUrl = await blobToDataUrl(blob);
-        preparedImage = { image: dataUrl, width, height, bytes: blob.size };
+        preparedImage = {
+          image: dataUrl,
+          width,
+          height,
+          bytes: blob.size,
+          mode,
+          modeLabel: modeLabel(mode),
+        };
         preview.src = dataUrl;
         previewWrap.style.display = "block";
         imageSize.textContent = `${width}×${height} / ${formatBytes(blob.size)}`;
+        processingLabel.textContent =
+          mode === "high" ? "高精度補正済み" : "通常変換";
         ocrButton.disabled = false;
         setMessage("準備できました。「文字を抽出する」を押してください。", "success");
       } catch (error) {
+        if (currentPreparation !== preparationGeneration) return;
         preparedImage = null;
         previewWrap.style.display = "none";
         setMessage(error.message || "画像の準備に失敗しました。", "error");
       } finally {
-        cameraInput.value = "";
-        galleryInput.value = "";
+        if (currentPreparation === preparationGeneration) {
+          cameraInput.value = "";
+          galleryInput.value = "";
+          setModeInputsDisabled(false);
+        }
       }
     }
 
     async function runOcr() {
       if (!preparedImage || running) return;
+      const requestImage = preparedImage;
       running = true;
       ocrButton.disabled = true;
+      setModeInputsDisabled(true);
       resultCard.style.display = "none";
       const started = Date.now();
       const timer = setInterval(() => {
@@ -345,14 +464,18 @@
         const response = await fetch("/api/ocr", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(preparedImage),
+          body: JSON.stringify({
+            image: requestImage.image,
+            width: requestImage.width,
+            height: requestImage.height,
+          }),
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(payload.error || "OCR処理に失敗しました。");
         }
         resultText.value = payload.text;
-        resultMeta.textContent = `${(payload.elapsed_ms / 1000).toFixed(1)}秒`;
+        resultMeta.textContent = `${(payload.elapsed_ms / 1000).toFixed(1)}秒 / ${requestImage.modeLabel}`;
         resultCard.style.display = "block";
         setMessage("文字を抽出しました。", "success");
         resultCard.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -361,6 +484,7 @@
       } finally {
         clearInterval(timer);
         running = false;
+        setModeInputsDisabled(false);
         ocrButton.disabled = !preparedImage;
       }
     }
@@ -392,11 +516,15 @@
     }
 
     function reset() {
+      preparationGeneration += 1;
       preparedImage = null;
+      selectedFile = null;
       preview.removeAttribute("src");
       previewWrap.style.display = "none";
       resultCard.style.display = "none";
       resultText.value = "";
+      processingLabel.textContent = "";
+      setModeInputsDisabled(false);
       ocrButton.disabled = true;
       setMessage("画像を選択してください。");
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -419,6 +547,11 @@
 
     cameraInput.addEventListener("change", (event) => prepareFile(event.target.files[0]));
     galleryInput.addEventListener("change", (event) => prepareFile(event.target.files[0]));
+    for (const input of modeInputs) {
+      input.addEventListener("change", () => {
+        if (selectedFile && !running) prepareFile(selectedFile);
+      });
+    }
     ocrButton.addEventListener("click", runOcr);
     document.getElementById("copy-button").addEventListener("click", copyResult);
     document.getElementById("download-button").addEventListener("click", downloadResult);

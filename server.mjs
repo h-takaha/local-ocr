@@ -15,6 +15,7 @@ export const OCR_PROMPT = [
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const INDEX_PATH = resolve(MODULE_DIR, "static", "index.html");
+const IMAGE_PROCESSING_PATH = resolve(MODULE_DIR, "static", "image-processing.mjs");
 const DEFAULT_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const DEFAULT_MAX_REQUEST_BYTES = 28 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 360_000;
@@ -80,6 +81,17 @@ async function sendIndex(response) {
       "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'",
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
+  });
+  response.end(body);
+}
+
+async function sendImageProcessingModule(response) {
+  const body = await readFile(IMAGE_PROCESSING_PATH);
+  response.writeHead(200, {
+    "Content-Type": "text/javascript; charset=utf-8",
+    "Content-Length": body.length,
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
   });
   response.end(body);
 }
@@ -269,6 +281,10 @@ export function createHandler(options = {}) {
     try {
       if (request.method === "GET" && url.pathname === "/") {
         await sendIndex(response);
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/image-processing.mjs") {
+        await sendImageProcessingModule(response);
         return;
       }
       if (request.method === "GET" && url.pathname === "/favicon.ico") {
