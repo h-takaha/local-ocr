@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { authorizeBasicRequest } from "./basic-auth.mjs";
+
 export const OCR_PROMPT = [
   "画像内の文字をOCRしてください。",
   "- 要約、説明、翻訳、推測、補完をしない",
@@ -278,7 +280,15 @@ export function createHandler(options = {}) {
   return async function handler(request, response) {
     const url = new URL(request.url ?? "/", "http://localhost");
 
+    if (!authorizeBasicRequest(request, response, "Local OCR", options.env ?? process.env)) {
+      return;
+    }
+
     try {
+      if (request.method === "GET" && url.pathname === "/healthz") {
+        sendJson(response, 200, { status: "ok" });
+        return;
+      }
       if (request.method === "GET" && url.pathname === "/") {
         await sendIndex(response);
         return;

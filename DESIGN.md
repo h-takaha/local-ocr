@@ -5,6 +5,12 @@
 外出先のスマホから自宅ノートPCへ画像を送り、Ollama上のローカルビジョンモデルだけで
 OCRしてテキストを返す。公開クラウド、外部LLM API、画像の永続保存は使わない。
 
+## Web認証
+
+`basic-auth.mjs` は Node 標準 `crypto` の SHA-256 固定長化＋`timingSafeEqual` でユーザー名と
+パスワードを比較する。`server.mjs` のルーティング前に適用し、UI、静的JS、OCR API、既存の
+health APIを保護する。除外は `/healthz` のみで、パスワード未設定時も 401 とする。
+
 ## 構成
 
 ```text

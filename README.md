@@ -3,6 +3,12 @@
 スマホで撮影・選択した画像を、自宅PCのOllamaとローカルビジョンモデルでOCRするWebツール。
 画像と抽出テキストはサーバーへ永続保存せず、外部AI APIも使用しない。
 
+## Basic 認証
+
+Server Manager から起動する Web UI（port 8005）は Basic 認証必須です。リポジトリ根の
+`.env` に `BASIC_AUTH_USER`（空なら `admin`）と `BASIC_AUTH_PASSWORD` を設定してください。
+パスワード未設定時は `/healthz` 以外を 401 にするため、認証なしで画像を送信できません。
+
 ## スマホから使う
 
 前提:
