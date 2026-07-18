@@ -1,0 +1,12 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+*.log
+
+# ローカル専用設定（コミットしない・machine固有 permissions）
+**/*.local.json
+
+# 秘密（万一混入しても git に載せない二重防御）
+**/auth.json
+**/.credentials.json
