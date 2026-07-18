@@ -63,19 +63,19 @@ HEICはスマホブラウザが画像を開ける場合のみ利用できる。�
 通常は`server_manager`が自動起動する。手動起動:
 
 ```powershell
-node tools/local_ocr/server.mjs serve --host 0.0.0.0 --port 8005 --no-browser
+node server.mjs serve --host 0.0.0.0 --port 8005 --no-browser
 ```
 
 環境診断:
 
 ```powershell
-node tools/local_ocr/server.mjs doctor
+node server.mjs doctor
 ```
 
 テスト:
 
 ```powershell
-node --test tests/test_local_ocr.mjs
+node --test
 ```
 
 ## 環境変数
@@ -97,3 +97,15 @@ node --test tests/test_local_ocr.mjs
 - server_manager登録時は`0.0.0.0`で待ち受けるため、同一LANからも到達可能
 - OCR画像・OCR本文・ファイル名はログへ記録しない
 - ログにはモデル名、画像バイト数、処理時間、成否のみを記録する
+## Storage and standalone layout
+
+This server resolves bundled static files from the directory containing `server.mjs`,
+not from the process working directory.
+
+- OCR images, temporary data, and extracted text exist only in request memory.
+- Ollama owns model storage; this tool neither stores nor moves models.
+- The browser's TXT download is written on the client device, never by the server.
+
+If server-side persistent data is added in the future, its default must be an
+ignored directory inside this repository. An outside-repository location must be
+selected explicitly with an environment variable or command-line argument.

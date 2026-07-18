@@ -437,7 +437,7 @@ export async function main(args = process.argv.slice(2)) {
     startServer(options);
     return 0;
   }
-  console.error("使い方: node tools/local_ocr/server.mjs [serve|doctor] [--host HOST] [--port PORT]");
+  console.error("使い方: node server.mjs [serve|doctor] [--host HOST] [--port PORT]");
   return 2;
 }
 
