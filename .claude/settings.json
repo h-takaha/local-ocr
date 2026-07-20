@@ -1,6 +1,7 @@
 {
   "permissions": {
     "additionalDirectories": [
+      "C:\\knowledge",
       "C:\\lab\\knowledge"
     ]
   }
