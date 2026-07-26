@@ -66,6 +66,8 @@ Phase 1 MVP実装・実機検証・ローカル配備完了。mainへ反映済�
 - OCRは誤読し得る。重要な日付、金額、固有名詞は元画像との照合が必要
 
 ## 最近の変更履歴
+- `2026-07-26` OCRの接続先を単一LLMディスパッチャ（既定`127.0.0.1:11435`）へ移行。既存の`OLLAMA_BASE_URL`明示設定は互換上書きとして残し、スマホからのOCRは`critical`優先度で送る。
+
 - `2026-07-14` `basic-auth.mjs` / `server.mjs` / `README.md` / `DESIGN.md` / `CONTEXT.md` / `tests/test_local_ocr.mjs`: Node 標準 crypto の固定長比較による Basic 認証を全ルートへ適用。`/healthz` のみ除外し、未設定・誤認証・正認証・404保持をテストした。
 
 - `2026-07-02` Phase 1.3として通常/高精度の読み取りモードを追加。高精度はブラウザ内で
