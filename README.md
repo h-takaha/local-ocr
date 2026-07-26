@@ -85,7 +85,8 @@ node --test
 | `LOCAL_OCR_HOST` | `127.0.0.1` | 待受ホスト |
 | `LOCAL_OCR_PORT` / `PORT` | `8005` | 待受ポート |
 | `LOCAL_OCR_MODEL` | `qwen3.5:9b` | Ollamaモデル |
-| `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama API |
+| `LOCAL_LLM_DISPATCHER_URL` | `http://127.0.0.1:11435` | 優先して使う単一LLMディスパッチャURL |
+| `OLLAMA_BASE_URL` | `http://127.0.0.1:11435` | 旧互換の接続先上書き。`LOCAL_LLM_DISPATCHER_URL`未設定時だけ使用 |
 | `LOCAL_OCR_TIMEOUT_MS` | `360000` | 推論タイムアウト |
 | `LOCAL_OCR_MAX_IMAGE_BYTES` | `20971520` | デコード後画像上限 |
 | `LOCAL_OCR_MAX_REQUEST_BYTES` | `29360128` | JSONリクエスト上限 |

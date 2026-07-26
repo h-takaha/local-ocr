@@ -31,6 +31,20 @@ test("qwen3.5:9b is the default OCR model", () => {
   assert.equal(getConfig().model, "qwen3.5:9b");
 });
 
+test("the dispatcher URL takes precedence over the legacy Ollama URL", (t) => {
+  const previousDispatcherUrl = process.env.LOCAL_LLM_DISPATCHER_URL;
+  const previousOllamaUrl = process.env.OLLAMA_BASE_URL;
+  t.after(() => {
+    if (previousDispatcherUrl === undefined) delete process.env.LOCAL_LLM_DISPATCHER_URL;
+    else process.env.LOCAL_LLM_DISPATCHER_URL = previousDispatcherUrl;
+    if (previousOllamaUrl === undefined) delete process.env.OLLAMA_BASE_URL;
+    else process.env.OLLAMA_BASE_URL = previousOllamaUrl;
+  });
+  process.env.LOCAL_LLM_DISPATCHER_URL = "http://127.0.0.1:11435";
+  process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+  assert.equal(getConfig().ollamaBaseUrl, "http://127.0.0.1:11435");
+});
+
 test("high accuracy mode enlarges small images without exceeding limits", () => {
   assert.deepEqual(calculateOutputSize(4000, 2000), {
     width: 3000,
@@ -120,8 +134,10 @@ test("buildOllamaPayload disables thinking and sends OCR-only prompt", () => {
 
 test("POST /api/ocr returns local model output without retaining the image", async () => {
   let receivedPayload;
+  let receivedHeaders;
   const mockFetch = async (_url, options) => {
     receivedPayload = JSON.parse(options.body);
+    receivedHeaders = options.headers;
     return new Response(JSON.stringify({ response: "北海道\n浦河町" }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -148,6 +164,7 @@ test("POST /api/ocr returns local model output without retaining the image", asy
   });
 
   assert.equal(receivedPayload.images[0], JPEG_BUFFER.toString("base64"));
+  assert.equal(receivedHeaders["X-LLM-Priority"], "critical");
   assert.equal(logs.some((line) => line.includes(JPEG_DATA_URL)), false);
   assert.equal(logs.some((line) => line.includes("北海道")), false);
 });

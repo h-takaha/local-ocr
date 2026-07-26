@@ -39,8 +39,9 @@ export function getConfig(overrides = {}) {
     model: overrides.model ?? process.env.LOCAL_OCR_MODEL ?? "qwen3.5:9b",
     ollamaBaseUrl:
       overrides.ollamaBaseUrl ??
+      process.env.LOCAL_LLM_DISPATCHER_URL ??
       process.env.OLLAMA_BASE_URL ??
-      "http://127.0.0.1:11434",
+      "http://127.0.0.1:11435",
     timeoutMs: Number(
       overrides.timeoutMs ?? process.env.LOCAL_OCR_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS,
     ),
@@ -217,7 +218,10 @@ export async function callOllama(imageBuffer, config, fetchImpl = fetch) {
   try {
     response = await fetchImpl(`${config.ollamaBaseUrl}/api/generate`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-LLM-Priority": "critical",
+      },
       body: JSON.stringify(buildOllamaPayload(imageBuffer, config.model)),
       signal: AbortSignal.timeout(config.timeoutMs),
     });

@@ -17,8 +17,9 @@ health APIを保護する。除外は `/healthz` のみで、パスワード未�
 スマホブラウザ
   └─ Tailscale
       └─ local_ocr / Node.js :8005
-          └─ Ollama API 127.0.0.1:11434
-              └─ qwen3.5:9b / RTX 5060 Laptop GPU
+          └─ LLM dispatcher 127.0.0.1:11435
+              └─ Ollama API 127.0.0.1:11434
+                  └─ qwen3.5:9b / RTX 5060 Laptop GPU
 ```
 
 ```text
@@ -102,6 +103,7 @@ tools/local_ocr/
 - **通常モードを既定**: 色付き文書の情報を勝手に失わず、必要な画像だけ高精度補正する
 - **保存しない**: Data URL、Buffer、OCR本文はリクエスト中だけ保持する
 - **Tailscale前提**: インターネットへポート公開しない。Telegramやクラウド同期も使わない
+- **ディスパッチャ経由**: OCRは`critical`優先度で単一LLMキューを通し、他ツールとのVRAM競合を防ぐ
 - **server_manager自動起動**: HTTPサーバーは軽量なため常駐させ、外出先から直接開けるようにする
 
 ## セキュリティ上の境界
