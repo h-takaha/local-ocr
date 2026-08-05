@@ -1,7 +1,6 @@
 # local-ocr — Claude 開発方針（L3: この repo 固有）
 
-1. まず `C:\lab\knowledge\rules\universal.md` を Read（全体ルール）。
-2. 次に本 repo の `README.md` / `DESIGN.md` / `CONTEXT.md` を Read（このツールの構造・ハマりどころ）。
+1. 本 repo の `README.md` / `DESIGN.md` / `CONTEXT.md` を Read（このツールの構造・ハマりどころ）。
 
 ## メモ
 
