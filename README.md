@@ -1,5 +1,13 @@
 # local_ocr
 
+## Android のホーム画面から開く
+
+Tailscale Serve などで、このアプリを同じ origin の HTTPS URL として配信し、Android の Chrome で開いて認証します。
+ブラウザの「アプリをインストール」または「ホーム画面に追加」から登録すると、独立したウィンドウで開けます。
+PC の起動と Tailscale 接続が必要です。オフライン保存・Service Worker は使用しません。
+HTTP の Tailscale IP URL はインストール用 HTTPS URL の代わりにはなりません。
+HTTPS 配信設定、稼働版への反映、Android 実機でのインストール・再起動確認は別途必要です。
+
 スマホで撮影・選択した画像を、自宅PCのOllamaとローカルビジョンモデルでOCRするWebツール。
 画像と抽出テキストはサーバーへ永続保存せず、外部AI APIも使用しない。
 

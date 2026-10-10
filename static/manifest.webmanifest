@@ -1,0 +1,25 @@
+{
+  "id": "/",
+  "name": "ローカルOCR",
+  "short_name": "ローカルOCR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "lang": "ja",
+  "theme_color": "#18181b",
+  "background_color": "#09090b",
+  "icons": [
+    {
+      "src": "/static/pwa-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/pwa-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

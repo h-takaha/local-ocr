@@ -18,6 +18,11 @@ export const OCR_PROMPT = [
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const INDEX_PATH = resolve(MODULE_DIR, "static", "index.html");
 const IMAGE_PROCESSING_PATH = resolve(MODULE_DIR, "static", "image-processing.mjs");
+const PWA_FILES = new Map([
+  ["/static/manifest.webmanifest", ["manifest.webmanifest", "application/manifest+json"]],
+  ["/static/pwa-icon-192.png", ["pwa-icon-192.png", "image/png"]],
+  ["/static/pwa-icon-512.png", ["pwa-icon-512.png", "image/png"]],
+]);
 const DEFAULT_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const DEFAULT_MAX_REQUEST_BYTES = 28 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 360_000;
@@ -295,6 +300,18 @@ export function createHandler(options = {}) {
       }
       if (request.method === "GET" && url.pathname === "/") {
         await sendIndex(response);
+        return;
+      }
+      if (request.method === "GET" && PWA_FILES.has(url.pathname)) {
+        const [filename, contentType] = PWA_FILES.get(url.pathname);
+        const body = await readFile(resolve(MODULE_DIR, "static", filename));
+        response.writeHead(200, {
+          "Content-Type": contentType,
+          "Content-Length": body.length,
+          "Cache-Control": "no-store",
+          "X-Content-Type-Options": "nosniff",
+        });
+        response.end(body);
         return;
       }
       if (request.method === "GET" && url.pathname === "/image-processing.mjs") {
