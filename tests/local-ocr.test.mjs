@@ -20,6 +20,38 @@ const JPEG_DATA_URL = `data:image/jpeg;base64,${JPEG_BUFFER.toString("base64")}`
 const AUTH_ENV = { BASIC_AUTH_PASSWORD: "secret" };
 const AUTHORIZATION = `Basic ${Buffer.from("admin:secret").toString("base64")}`;
 
+test("PWA assets have valid dimensions and retain Basic authentication", async () => {
+  await withServer(createHandler({ env: AUTH_ENV }), async (baseUrl) => {
+    const manifestPath = "/static/manifest.webmanifest";
+    for (const path of ["/", manifestPath, "/static/pwa-icon-192.png", "/static/pwa-icon-512.png", "/api/ocr"]) {
+      assert.equal((await fetch(`${baseUrl}${path}`)).status, 401);
+    }
+    const html = await (await fetchAuth(baseUrl)).text();
+    assert.match(html, /href="\/static\/manifest\.webmanifest" crossorigin="use-credentials"/);
+    const response = await fetchAuth(`${baseUrl}${manifestPath}`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-type"), "application/manifest+json");
+    const manifest = await response.json();
+    for (const field of ["id", "start_url", "scope"]) assert.equal(manifest[field], "/");
+    assert.equal(manifest.display, "standalone");
+    assert.deepEqual(manifest.icons.map(icon => icon.sizes), ["192x192", "512x512"]);
+    for (const icon of manifest.icons) {
+      const response = await fetchAuth(`${baseUrl}${icon.src}`);
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get("content-type"), "image/png");
+      const png = Buffer.from(await response.arrayBuffer());
+      assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+      const size = Number(icon.sizes.split("x")[0]);
+      assert.equal(png.readUInt32BE(16), size);
+      assert.equal(png.readUInt32BE(20), size);
+    }
+    assert.equal((await fetchAuth(`${baseUrl}/static/../server.mjs`)).status, 404);
+  });
+  await withServer(createHandler({ env: {} }), async baseUrl => {
+    assert.equal((await fetchAuth(`${baseUrl}/static/manifest.webmanifest`)).status, 401);
+  });
+});
+
 function fetchAuth(url, options = {}) {
   return fetch(url, {
     ...options,
