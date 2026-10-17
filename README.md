@@ -1,120 +1,134 @@
-# local_ocr
+# local-ocr
 
-## Android のホーム画面から開く
+画像の文字を、手元のPCで動くOllamaのビジョンモデルで読み取るWebツールです。
+同じPCのブラウザで、架空のサンプル文書を使ってOCRからコピー・TXT保存まで試せます。
+日本語・英数字の印刷文字を主な対象とし、写真に合わせて画像補正を選べます。
 
-Tailscale Serve などで、このアプリを同じ origin の HTTPS URL として配信し、Android の Chrome で開いて認証します。
-ブラウザの「アプリをインストール」または「ホーム画面に追加」から登録すると、独立したウィンドウで開けます。
-PC の起動と Tailscale 接続が必要です。オフライン保存・Service Worker は使用しません。
-HTTP の Tailscale IP URL はインストール用 HTTPS URL の代わりにはなりません。
-HTTPS 配信設定、稼働版への反映、Android 実機でのインストール・再起動確認は別途必要です。
+![サンプル文書を読み取ったブラウザ画面](docs/images/ocr-desktop.png)
 
-スマホで撮影・選択した画像を、自宅PCのOllamaとローカルビジョンモデルでOCRするWebツール。
-画像と抽出テキストはサーバーへ永続保存せず、外部AI APIも使用しない。
+画像の変換はブラウザ内、文字の推論は設定したOllama接続先で行います。
+本アプリは画像・抽出本文・履歴をサーバーのディスクへ保存しません。
+ローカルOllamaを使う標準構成では、外部AI APIやAPIキーは不要です。
 
-## Basic 認証
+## 同じPCで試す
 
-Server Manager から起動する Web UI（port 8005）は Basic 認証必須です。リポジトリ根の
-`.env` に `BASIC_AUTH_USER`（空なら `admin`）と `BASIC_AUTH_PASSWORD` を設定してください。
-パスワード未設定時は `/healthz` 以外を 401 にするため、認証なしで画像を送信できません。
+WindowsのPowerShellを例にしています。Node.js 24以上、Ollama、Git、ブラウザが必要です。
+モデルのダウンロードには通信とディスク容量が必要です。
 
-## スマホから使う
-
-前提:
-
-- 自宅PCが起動中でスリープしていない
-- スマホと自宅PCの両方でTailscaleが接続済み
-- 自宅PCでOllamaが起動し、`qwen3.5:9b`がインストール済み
-- `server_manager`が起動済み
-
-スマホで次を開く。
-
-```text
-http://100.78.223.50:8005
-```
-
-1. 「カメラで撮る」または「画像を選ぶ」
-2. 「通常」または「高精度」の読み取りモードを選ぶ
-3. プレビューを確認して「文字を抽出する」
-4. 結果を必要に応じて修正し、「コピー」または「TXT保存」
-
-処理中は画面を閉じずに待つ。通常の書類より、縦長画面や文字量の多い画像は時間がかかる。
-
-## 対応範囲
-
-- ブラウザで開ける画像を送信前にJPEGへ変換
-- 元画像は20MBまで
-- 長辺3,000pxを超える画像はスマホ側で縮小
-- 日本語・英数字の印刷文字
-- 1回につき1画像
-- 同時OCRは1件
-- タイムアウトは360秒
-- 通常モードは写真の色を維持
-- 高精度モードは白黒化、コントラスト補正、軽いシャープ化を適用
-
-HEICはスマホブラウザが画像を開ける場合のみ利用できる。手書き、表、低照度、強い傾き、
-小さな文字は誤認識することがあるため、重要な日付・金額・固有名詞は元画像と照合する。
-
-## 読み取りモード
-
-- **通常**（既定）: 写真の色情報を残して長辺最大3,000pxへ変換する
-- **高精度**: ブラウザ内でグレースケール化、上下1%を除いたオートコントラスト、
-  軽い輪郭強調を適用する。小さい画像は最大3倍まで拡大し、長辺3,000pxを上限とする
-
-影、薄い文字、裏写り、低コントラストの書類では高精度モードが有効な場合がある。
-一方、色分けされた表やカラー文字では通常モードの方がよい場合があるため、
-プレビューを確認して切り替える。モード変更時は選択済み画像をブラウザ内で再変換する。
-
-画像補正とJPEG変換はスマホのブラウザ内だけで行い、補正前後の画像はディスクへ保存しない。
-
-## 起動と確認
-
-通常は`server_manager`が自動起動する。手動起動:
+1. [Node.js](https://nodejs.org/en/download) と [Ollama](https://ollama.com/download) をインストールし、Ollamaを起動します。
+2. このリポジトリをGitHubの「Code」からcloneし、そのフォルダーでPowerShellを開きます。
+3. バージョンを確認し、モデルをダウンロードします。
 
 ```powershell
-node server.mjs serve --host 0.0.0.0 --port 8005 --no-browser
+node --version
+ollama --version
+ollama pull qwen3.5:9b
 ```
 
-環境診断:
+4. 設定ファイルを作ります。既存の `.env` があれば上書きせず、必要な項目を確認してください。
 
 ```powershell
-node server.mjs doctor
+Copy-Item .env.example .env
+notepad .env
 ```
 
-テスト:
+`.env` の `BASIC_AUTH_USER` と `BASIC_AUTH_PASSWORD` に、自分で決めたユーザー名と空でないパスワードを設定します。
+`.env` はGitへコミットしません。アプリにnpm依存パッケージはなく、`npm install` は不要です。
+
+5. 設定を読み込んで環境を診断し、サーバーを起動します。
+
+```powershell
+node --env-file=.env server.mjs doctor
+node --env-file=.env server.mjs serve --port 8005
+```
+
+6. ブラウザで [http://127.0.0.1:8005](http://127.0.0.1:8005) を開き、設定した認証情報を入力します。
+7. 「サンプルで試す」を押し、プレビューを見て「文字を抽出する」を押します。
+8. 「サンプルの正解を確認」を開いてOCR結果と比較し、必要なら修正して「コピー」または「TXT保存」を試します。
+
+サンプルは同梱された日本語・英数字の架空文書です。「読みにくい例を試す」で薄い文字の例も比較できます。
+成功時の処理時間は、この画像・モデル・その時点のPC状態での結果です。
+初回やモデルがメモリから外れた後は読み込み時間もかかります。
+画面の経過時間とモデル読み込み時間を見ながら、処理中は画面を開いたまま待ってください。
+
+詳しい導入条件、つまずいた場合の確認順、スマホ利用は [セットアップガイド](docs/SETUP.md)、
+確認できた環境・OCR結果と未検証の条件は [検証記録](docs/VALIDATION.md) を参照してください。
+
+## 自分の画像を読む
+
+1. 「カメラで撮る」または「画像を選ぶ」で1枚選びます。
+2. 「通常」または「高精度」を選び、プレビューを確認します。
+3. 「文字を抽出する」を押し、結果を元画像と照合します。
+4. 必要なら本文を修正してコピーまたはTXT保存します。
+
+| モード | 処理 | 選ぶ目安 |
+|---|---|---|
+| 通常（既定） | 色を維持して縮小 | カラー文字、色分けされた資料、まず試すとき |
+| 高精度 | 白黒化、コントラスト補正、軽い輪郭強調、小画像の拡大 | 薄い文字や低コントラストの画像で比較するとき |
+
+「高精度」は補正方法の名前で、認識精度の向上を保証しません。
+手書き、表、低照度、傾き、小さい文字は誤認識・欠落・補完が起こり得ます。
+重要な日付・金額・固有名詞は元画像と照合してください。
+
+- 1回1画像、同時OCRは1件、推論タイムアウトは既定360秒
+- 元画像は20MBまで。ブラウザで開ける画像を長辺最大3,000pxのJPEGへ変換
+- HEICはブラウザがデコードできる場合のみ。開けなければJPEG等へ変換
+- PDF直接入力、複数画像の一括処理、履歴保存は対象外
+
+## 動作環境の考え方
+
+Node.js 24以上と、画像入力に対応するローカルOllamaモデルを使います。
+既定モデルは `qwen3.5:9b` です。必要なメモリ・空き容量・速度はモデルと実行条件で変わり、
+モデルファイルのサイズだけでは必要RAM/VRAMを判断できません。
+
+Ollamaの対応OS・GPU条件は [Windows](https://docs.ollama.com/windows)、
+[macOS](https://docs.ollama.com/macos)、[GPU](https://docs.ollama.com/gpu)、
+[FAQ](https://docs.ollama.com/faq) を確認してください。
+これらはOllamaの公式条件であり、本アプリのOCR完走や速度を保証するものではありません。
+CPUのみ、Mac、軽量モデル、別PCでの本アプリのOCRは未検証です。
+購入判断に使える最低スペックや処理時間の保証値はまだありません。
+
+画面の環境診断または `doctor --json` で、取得できるOS・RAM・バージョン・モデル情報・
+CPU/GPU配置を確認できます。取得不能な項目は未確認として扱い、診断の成功と実際のOCR成功を区別します。
+GPU型番・ドライバー・空きVRAM・空きディスク容量は自動診断では未確認です。
+vision対応やlocal判定を確認できないモデルは、画像の送信を止めます。
+
+## 設定とデータの扱い
+
+| 環境変数 | 既定値 | 用途 |
+|---|---|---|
+| `BASIC_AUTH_USER` | `admin` | Basic認証ユーザー名 |
+| `BASIC_AUTH_PASSWORD` | なし | 必須の認証パスワード |
+| `LOCAL_OCR_HOST` | `127.0.0.1` | Webサーバーの待受先 |
+| `LOCAL_OCR_PORT` / `PORT` | `8005` | 待受ポート（前者を優先） |
+| `LOCAL_OCR_MODEL` | `qwen3.5:9b` | OCRモデル |
+| `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama接続先 |
+| `LOCAL_LLM_DISPATCHER_URL` | 未設定 | 明示時のみ優先する互換ディスパッチャ接続先 |
+| `LOCAL_OCR_TIMEOUT_MS` | `360000` | 推論タイムアウト（ms） |
+| `LOCAL_OCR_MAX_IMAGE_BYTES` | `20971520` | デコード後画像の上限（bytes） |
+| `LOCAL_OCR_MAX_REQUEST_BYTES` | `29360128` | JSONリクエストの上限（bytes） |
+
+Nodeは `.env` を自動では読みません。上記コマンドの `--env-file=.env` を付けます。
+モデルの保管はOllamaが管理します。TXT保存の保存先はブラウザを使っている端末です。
+画像と本文は画面を開いている間、ブラウザのメモリにも存在します。
+
+Basic認証は `/healthz` 以外のUI・静的ファイル・APIに必須です。
+パスワード未設定の場合も保護された経路は401となります。
+標準の待受先は同じPCだけです。別端末へ公開する場合はHTTPSを含む別途設定が必要です。
+Basic認証自体には通信の暗号化機能がありません。
+
+接続先を別のホストへ変更すると、その接続先へ画像とOCRプロンプトが送られます。
+アプリの通常ログはモデル名・画像バイト数・処理時間・成否を記録し、画像・本文・ファイル名は記録しません。
+環境診断には画像・OCR本文・認証情報・ホスト名・個人パスを含めません。
+Ollama側やネットワーク側のログ・保存方針はそれぞれの設定も確認してください。
+
+## 開発
+
+Node.js標準機能でHTTP/API、Ollama呼び出し、テストを実装しています。
 
 ```powershell
 node --test
+node --env-file=.env server.mjs doctor --json
 ```
 
-## 環境変数
-
-| 変数 | 既定値 | 内容 |
-|---|---:|---|
-| `LOCAL_OCR_HOST` | `127.0.0.1` | 待受ホスト |
-| `LOCAL_OCR_PORT` / `PORT` | `8005` | 待受ポート |
-| `LOCAL_OCR_MODEL` | `qwen3.5:9b` | Ollamaモデル |
-| `LOCAL_LLM_DISPATCHER_URL` | `http://127.0.0.1:11435` | 優先して使う単一LLMディスパッチャURL |
-| `OLLAMA_BASE_URL` | `http://127.0.0.1:11435` | 旧互換の接続先上書き。`LOCAL_LLM_DISPATCHER_URL`未設定時だけ使用 |
-| `LOCAL_OCR_TIMEOUT_MS` | `360000` | 推論タイムアウト |
-| `LOCAL_OCR_MAX_IMAGE_BYTES` | `20971520` | デコード後画像上限 |
-| `LOCAL_OCR_MAX_REQUEST_BYTES` | `29360128` | JSONリクエスト上限 |
-
-## セキュリティ
-
-- ルーターのポート開放は行わない
-- Tailscale経由でのみ利用する
-- server_manager登録時は`0.0.0.0`で待ち受けるため、同一LANからも到達可能
-- OCR画像・OCR本文・ファイル名はログへ記録しない
-- ログにはモデル名、画像バイト数、処理時間、成否のみを記録する
-## Storage and standalone layout
-
-This server resolves bundled static files from the directory containing `server.mjs`,
-not from the process working directory.
-
-- OCR images, temporary data, and extracted text exist only in request memory.
-- Ollama owns model storage; this tool neither stores nor moves models.
-- The browser's TXT download is written on the client device, never by the server.
-
-If server-side persistent data is added in the future, its default must be an
-ignored directory inside this repository. An outside-repository location must be
-selected explicitly with an environment variable or command-line argument.
+構成と判断理由は [DESIGN.md](DESIGN.md)、既知の課題・検証境界は [CONTEXT.md](CONTEXT.md) にあります。
