@@ -226,14 +226,32 @@
   <main>
     <header>
       <h1>ローカルOCR</h1>
-      <p class="lead">写真を自宅PCのローカルLLMで文字にします。画像は保存しません。</p>
+      <p class="lead">画像をPCのローカルLLMで文字にします。まずサンプルで、精度と待ち時間を確かめられます。</p>
     </header>
 
     <section class="card" aria-labelledby="upload-title">
       <div class="status-row">
         <h2 id="upload-title">1. 写真を用意</h2>
-        <span id="health" class="badge"><span class="dot"></span>確認中</span>
+        <span id="health" class="badge" role="status">… 接続確認中</span>
       </div>
+      <p id="health-detail" class="hint" aria-live="polite"></p>
+      <details id="diagnostics-panel">
+        <summary>環境診断・問い合わせ用情報</summary>
+        <p class="hint">接続確認はOCR成功を保証しません。取得できない項目は未確認です。</p>
+        <p id="environment" class="hint"></p>
+        <button id="recheck-button" type="button">接続を再確認</button>
+        <button id="diagnostics-button" type="button">診断JSONを保存</button>
+        <p class="privacy">診断JSONには画像・OCR本文・認証情報・ホスト名・個人パスを含めません。送信前に内容を確認してください。</p>
+      </details>
+      <div class="button-grid" style="margin:14px 0">
+        <button id="sample-button" type="button">サンプルで試す</button>
+        <button id="difficult-button" type="button">読みにくい例を試す</button>
+      </div>
+      <details id="expected-wrap" hidden>
+        <summary>サンプルの正解を確認</summary>
+        <pre id="expected-text" style="white-space:pre-wrap"></pre>
+        <p class="hint">架空の文書を使った自作画像です。同じ文でも小さい文字や薄い文字は誤読・未検出が増えます。高精度モードとの違いも比べられます。</p>
+      </details>
       <div class="button-grid">
         <label class="file-button" for="camera-input">📷 カメラで撮る</label>
         <input id="camera-input" type="file" accept="image/*" capture="environment">
@@ -271,7 +289,7 @@
 
       <button id="ocr-button" class="primary" type="button" disabled>2. 文字を抽出する</button>
       <p id="message" aria-live="polite">画像を選択してください。</p>
-      <p class="privacy">Tailscale内で自宅PCへ送信し、Ollamaで処理します。外部AI APIやクラウドストレージは使いません。</p>
+      <p class="privacy">このWebアプリのサーバーから、設定されたOllamaへ画像を送って処理します。既定は同じPC内です。アプリは画像・本文をサーバーに保存せず、外部AIへの自動切替もしません。</p>
     </section>
 
     <section id="result-card" class="card" aria-labelledby="result-title">
@@ -313,6 +331,25 @@
     let selectedFile = null;
     let preparationGeneration = 0;
     let running = false;
+    let sampleLoading = false;
+    let lastDiagnostics = null;
+    const sampleButtons = [document.getElementById("sample-button"), document.getElementById("difficult-button")];
+
+    async function loadSample(kind) {
+      if (running || sampleLoading) return;
+      sampleLoading = true;
+      setModeInputsDisabled(true);
+      try {
+        const response = await fetch(`/static/sample-${kind}.png`);
+        if (!response.ok) throw new Error("サンプル画像を取得できませんでした。");
+        const expected = await fetch("/static/sample-expected.txt");
+        if (!expected.ok) throw new Error("正解本文を取得できませんでした。");
+        await prepareFile(new File([await response.blob()], `sample-${kind}.png`, { type: "image/png" }));
+        document.getElementById("expected-text").textContent = await expected.text();
+        document.getElementById("expected-wrap").hidden = false;
+      } catch (error) { setMessage(error.message, "error"); }
+      finally { sampleLoading = false; setModeInputsDisabled(false); }
+    }
 
     function setMessage(text, kind = "") {
       message.textContent = text;
@@ -337,6 +374,9 @@
       for (const input of modeInputs) {
         input.disabled = disabled;
       }
+      cameraInput.disabled = disabled;
+      galleryInput.disabled = disabled;
+      sampleButtons.forEach(button => button.disabled = disabled || sampleLoading);
     }
 
     function blobToDataUrl(blob) {
@@ -365,6 +405,10 @@
     }
 
     async function prepareFile(file) {
+      if (running) return;
+      document.getElementById("expected-wrap").hidden = true;
+      resultCard.style.display = "none";
+      resultText.value = "";
       if (!file) return;
       if (running) {
         setMessage("OCR処理中です。完了してから画像を変更してください。", "error");
@@ -457,7 +501,7 @@
       const started = Date.now();
       const timer = setInterval(() => {
         const seconds = Math.floor((Date.now() - started) / 1000);
-        setMessage(`ローカルLLMで処理中… ${seconds}秒`);
+        setMessage(`ローカルLLMで処理中… ${seconds}秒。初回はモデル読み込みで長くかかることがあります。画面を開いたままお待ちください。`);
       }, 1000);
       setMessage("ローカルLLMで処理中… 0秒");
 
@@ -473,20 +517,24 @@
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) {
-          throw new Error(payload.error || "OCR処理に失敗しました。");
+          const failure = new Error(payload.error || "OCR処理に失敗しました。認証またはサーバーの状態を確認してください。");
+          failure.code = payload.code;
+          throw failure;
         }
+        if (typeof payload.text !== "string" || !payload.text.trim()) throw new Error("OCR本文を取得できませんでした。診断を再確認してください。");
         resultText.value = payload.text;
-        resultMeta.textContent = `${(payload.elapsed_ms / 1000).toFixed(1)}秒 / ${requestImage.modeLabel}`;
+        resultMeta.textContent = `${(payload.elapsed_ms / 1000).toFixed(1)}秒 / モデル読込 ${payload.load_ms === null || payload.load_ms === undefined ? "未確認" : (payload.load_ms / 1000).toFixed(1) + "秒"} / ${requestImage.modeLabel} / ${payload.model}`;
         resultCard.style.display = "block";
-        setMessage("文字を抽出しました。", "success");
+        setMessage("✓ OCRが完了しました。正確さは原文と照合してください。", "success");
         resultCard.scrollIntoView({ behavior: "smooth", block: "start" });
       } catch (error) {
-        setMessage(error.message || "通信に失敗しました。", "error");
+        setMessage(`⚠ ${error.message || "通信に失敗しました。"}${error.code ? ` (${error.code})` : ""}`, "error");
       } finally {
         clearInterval(timer);
         running = false;
         setModeInputsDisabled(false);
         ocrButton.disabled = !preparedImage;
+        await checkHealth();
       }
     }
 
@@ -524,6 +572,7 @@
       previewWrap.style.display = "none";
       resultCard.style.display = "none";
       resultText.value = "";
+      document.getElementById("expected-wrap").hidden = true;
       processingLabel.textContent = "";
       setModeInputsDisabled(false);
       ocrButton.disabled = true;
@@ -535,15 +584,33 @@
       try {
         const response = await fetch("/api/health", { cache: "no-store" });
         const payload = await response.json();
-        if (!response.ok) throw new Error();
-        healthBadge.className = "badge ready";
-        healthBadge.innerHTML = '<span class="dot"></span>準備OK';
+        healthBadge.className = response.ok && payload.status === "ready" ? "badge ready" : "badge error";
+        healthBadge.textContent = response.ok && payload.status === "ready" ? "✓ 接続・モデル確認済" : "⚠ 要確認";
+        document.getElementById("health-detail").textContent = payload.guidance || "接続状態を確認できませんでした。環境診断を確認してください。";
         healthBadge.title = payload.model;
       } catch {
         healthBadge.className = "badge error";
-        healthBadge.innerHTML = '<span class="dot"></span>要確認';
-        healthBadge.title = "OllamaまたはOCRモデルを確認してください";
+        healthBadge.textContent = "⚠ 接続未確認";
+        document.getElementById("health-detail").textContent = "Webサーバーへの接続または認証を確認してください。";
       }
+    }
+
+    async function showDiagnostics(download = false) {
+      try {
+        const response = await fetch("/api/diagnostics", { cache: "no-store" });
+        if (!response.ok) throw new Error("診断を取得できません。接続と認証を確認してください。");
+        lastDiagnostics = await response.json();
+        const d = lastDiagnostics;
+        const gib = bytes => bytes == null ? "未確認" : `${(bytes / 2 ** 30).toFixed(1)} GiB`;
+        document.getElementById("environment").textContent = `${d.host.os} ${d.host.arch} / Node ${d.host.node} / RAM合計 ${gib(d.host.ram_total_bytes)}・空き ${gib(d.host.ram_available_bytes)} / Ollama ${d.ollama_version ?? "未確認"} / ${d.configuration.model} / モデル保存サイズ ${gib(d.model.size_bytes)} / 実行時VRAM配置 ${d.placement?.loaded === false ? "未ロード" : gib(d.placement?.vram_bytes)}。${d.guidance} ${d.limits}`;
+        if (download) {
+          const blob = new Blob([JSON.stringify(d, null, 2)], { type: "application/json" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url; link.download = "local-ocr-diagnostics.json"; link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+      } catch (error) { document.getElementById("environment").textContent = `⚠ ${error.message}`; }
     }
 
     cameraInput.addEventListener("change", (event) => prepareFile(event.target.files[0]));
@@ -557,6 +624,11 @@
     document.getElementById("copy-button").addEventListener("click", copyResult);
     document.getElementById("download-button").addEventListener("click", downloadResult);
     document.getElementById("reset-button").addEventListener("click", reset);
+    sampleButtons[0].addEventListener("click", () => loadSample("clear"));
+    sampleButtons[1].addEventListener("click", () => loadSample("difficult"));
+    document.getElementById("recheck-button").addEventListener("click", async () => { await checkHealth(); await showDiagnostics(); });
+    document.getElementById("diagnostics-button").addEventListener("click", () => showDiagnostics(true));
+    document.getElementById("diagnostics-panel").addEventListener("toggle", event => { if (event.target.open) showDiagnostics(); });
     checkHealth();
   </script>
 </body>

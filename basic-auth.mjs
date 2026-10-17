@@ -24,7 +24,13 @@ function decodeCredentials(authorization) {
 }
 
 export function authorizeBasicRequest(request, response, realm, env = process.env) {
-  const url = new URL(request.url ?? "/", "http://localhost");
+  let url;
+  try { url = new URL(request.url ?? "/", "http://localhost"); }
+  catch {
+    response.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
+    response.end("Bad Request");
+    return false;
+  }
   if (url.pathname === "/healthz") {
     return true;
   }

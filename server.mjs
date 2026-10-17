@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { authorizeBasicRequest } from "./basic-auth.mjs";
+import { collectDiagnostics, inspectModel, GUIDANCE, validateConfig } from "./diagnostics.mjs";
 
 export const OCR_PROMPT = [
   "画像内の文字をOCRしてください。",
@@ -22,6 +23,9 @@ const PWA_FILES = new Map([
   ["/static/manifest.webmanifest", ["manifest.webmanifest", "application/manifest+json"]],
   ["/static/pwa-icon-192.png", ["pwa-icon-192.png", "image/png"]],
   ["/static/pwa-icon-512.png", ["pwa-icon-512.png", "image/png"]],
+  ["/static/sample-clear.png", ["sample-clear.png", "image/png"]],
+  ["/static/sample-difficult.png", ["sample-difficult.png", "image/png"]],
+  ["/static/sample-expected.txt", ["sample-expected.txt", "text/plain; charset=utf-8"]],
 ]);
 const DEFAULT_MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const DEFAULT_MAX_REQUEST_BYTES = 28 * 1024 * 1024;
@@ -46,7 +50,7 @@ export function getConfig(overrides = {}) {
       overrides.ollamaBaseUrl ??
       process.env.LOCAL_LLM_DISPATCHER_URL ??
       process.env.OLLAMA_BASE_URL ??
-      "http://127.0.0.1:11435",
+      "http://127.0.0.1:11434",
     timeoutMs: Number(
       overrides.timeoutMs ?? process.env.LOCAL_OCR_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS,
     ),
@@ -213,13 +217,15 @@ export function buildOllamaPayload(imageBuffer, model) {
 async function parseResponseJson(response) {
   try {
     return await response.json();
-  } catch {
-    throw new HttpError(502, "ローカルLLMから不正な応答がありました。", "invalid_ollama_response");
+  } catch (error) {
+    if (error?.name === "TimeoutError" || error?.name === "AbortError") throw error;
+    throw new HttpError(502, "ローカルLLMの応答を読み取れませんでした。診断を更新し、Ollamaまたは接続先の状態を確認してください。", "invalid_ollama_response");
   }
 }
 
 export async function callOllama(imageBuffer, config, fetchImpl = fetch) {
   let response;
+  let payload;
   try {
     response = await fetchImpl(`${config.ollamaBaseUrl}/api/generate`, {
       method: "POST",
@@ -229,55 +235,57 @@ export async function callOllama(imageBuffer, config, fetchImpl = fetch) {
       },
       body: JSON.stringify(buildOllamaPayload(imageBuffer, config.model)),
       signal: AbortSignal.timeout(config.timeoutMs),
+      redirect: "error",
     });
+    payload = await parseResponseJson(response);
   } catch (error) {
+    if (error instanceof HttpError) throw error;
     if (error?.name === "TimeoutError" || error?.name === "AbortError") {
       throw new HttpError(
         504,
-        "OCR処理がタイムアウトしました。画像を小さくして再試行してください。",
+        "待機時間を超えました。初回のモデル読込や混雑の可能性があります。処理が停止したかは未確認です。Ollamaの状態を確認し、画像を小さくするか待機上限を見直してください。",
         "ollama_timeout",
       );
     }
     throw new HttpError(
       503,
-      "Ollamaに接続できません。自宅PCでOllamaが起動しているか確認してください。",
+      GUIDANCE.ollama_unavailable,
       "ollama_unavailable",
     );
   }
 
-  const payload = await parseResponseJson(response);
   if (!response.ok) {
-    const detail = typeof payload.error === "string" ? ` ${payload.error}` : "";
+    // Upstream errors may contain user input or private paths. Never echo them.
+    const detail = typeof payload.error === "string" ? payload.error : "";
+    if (/out of memory|not enough (?:system )?memory|requires more (?:system )?memory|failed to allocate|unable to allocate|insufficient.*memory/i.test(detail)) {
+      throw new HttpError(503, "Ollamaがメモリ確保の失敗を報告しました。他の負荷を確認してください。設定変更や別モデルへの切替は自動では行いません。", "ollama_memory");
+    }
+    if (response.status === 404 && /model.*not found/i.test(detail)) {
+      throw new HttpError(503, GUIDANCE.model_missing, "model_missing");
+    }
+    if (response.status === 503) {
+      throw new HttpError(503, "Ollamaが現在リクエストを受け付けられません。混雑やモデル読込失敗などの原因は未確認です。Ollamaの状態を確認し、しばらく待ってください。", "ollama_busy");
+    }
     throw new HttpError(
       502,
-      `ローカルLLMの処理に失敗しました。${detail}`.trim(),
+      "ローカルLLMの処理に失敗しました。原因は未確認です。診断を再実行し、必要ならOllamaのログを手元で確認してください。",
       "ollama_error",
     );
   }
 
+  if (payload.done === false || payload.done_reason === "length") {
+    throw new HttpError(502, "出力が完了しませんでした。画像を文書の一部に分けて再試行してください。", "incomplete_ocr_result");
+  }
+
   const text = typeof payload.response === "string" ? payload.response.trim() : "";
   if (!text) {
-    throw new HttpError(502, "文字を抽出できませんでした。", "empty_ocr_result");
+    throw new HttpError(502, "OCR本文が空でした。原因は未確認です。文字のあるサンプルで比較し、モデルと画像条件を確認してください。", "empty_ocr_result");
   }
-  return text;
+  return { text, load_ms: Number.isFinite(payload.load_duration) && payload.load_duration >= 0 ? Math.round(payload.load_duration / 1e6) : null };
 }
 
 export async function checkOllama(config, fetchImpl = fetch) {
-  try {
-    const response = await fetchImpl(`${config.ollamaBaseUrl}/api/tags`, {
-      signal: AbortSignal.timeout(3_000),
-    });
-    if (!response.ok) {
-      return { ready: false, ollama: false, modelInstalled: false };
-    }
-    const payload = await response.json();
-    const modelInstalled = (payload.models ?? []).some(
-      (entry) => entry.name === config.model || entry.model === config.model,
-    );
-    return { ready: modelInstalled, ollama: true, modelInstalled };
-  } catch {
-    return { ready: false, ollama: false, modelInstalled: false };
-  }
+  return inspectModel(config, fetchImpl);
 }
 
 export function createHandler(options = {}) {
@@ -287,13 +295,12 @@ export function createHandler(options = {}) {
   const logger = options.logger ?? console;
 
   return async function handler(request, response) {
-    const url = new URL(request.url ?? "/", "http://localhost");
-
     if (!authorizeBasicRequest(request, response, "Local OCR", options.env ?? process.env)) {
       return;
     }
 
     try {
+      const url = new URL(request.url ?? "/", "http://localhost");
       if (request.method === "GET" && url.pathname === "/healthz") {
         sendJson(response, 200, { status: "ok" });
         return;
@@ -338,7 +345,13 @@ export function createHandler(options = {}) {
           busy: Boolean(state.busy),
           ollama: health.ollama,
           model_installed: health.modelInstalled,
+          code: health.code,
+          guidance: GUIDANCE[health.code],
         });
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/api/diagnostics") {
+        sendJson(response, 200, await collectDiagnostics(config, fetchImpl, options.env ?? process.env));
         return;
       }
       if (request.method === "POST" && url.pathname === "/api/ocr") {
@@ -350,18 +363,20 @@ export function createHandler(options = {}) {
           );
         }
 
-        const payload = await readJsonBody(request, config.maxRequestBytes);
-        const image = decodeImageData(payload.image, config.maxImageBytes);
         state.busy = true;
         const startedAt = performance.now();
         try {
-          const text = await callOllama(image.buffer, config, fetchImpl);
+          const payload = await readJsonBody(request, config.maxRequestBytes);
+          const image = decodeImageData(payload?.image, config.maxImageBytes);
+          const health = await checkOllama(config, fetchImpl);
+          if (!health.ready) throw new HttpError(503, GUIDANCE[health.code], health.code);
+          const result = await callOllama(image.buffer, config, fetchImpl);
           const elapsedMs = Math.round(performance.now() - startedAt);
           logger.info?.(
             `[local_ocr] success model=${config.model} bytes=${image.buffer.length} elapsed_ms=${elapsedMs}`,
           );
           sendJson(response, 200, {
-            text,
+            ...result,
             model: config.model,
             elapsed_ms: elapsedMs,
           });
@@ -380,7 +395,7 @@ export function createHandler(options = {}) {
           : "予期しないエラーが発生しました。";
       const code = error instanceof HttpError ? error.code : "internal_error";
       if (status >= 500) {
-        logger.error?.(`[local_ocr] error code=${code} message=${error?.message ?? error}`);
+        logger.error?.(`[local_ocr] error code=${code}`);
       }
       if (!response.headersSent) {
         sendJson(response, status, { error: message, code });
@@ -393,7 +408,13 @@ export function createHandler(options = {}) {
 
 export function startServer(overrides = {}) {
   const config = getConfig(overrides);
+  if (!process.env.BASIC_AUTH_PASSWORD) throw new Error("BASIC_AUTH_PASSWORDを設定してください。READMEの .env 作成と --env-file 指定を確認してください。");
+  if (!validateConfig(config)) throw new Error("設定が不正です。ポートは1〜65535、上限値は正の整数、接続先は認証情報・query・fragmentのないHTTP(S) URLを指定してください。");
   const server = createServer(createHandler({ config }));
+  server.on("error", (error) => {
+    console.error(error.code === "EADDRINUSE" ? "ポートが使用中です。既存アプリを確認するか --port 8006 など別のポートを指定してください。" : "起動できませんでした。待受ホスト・ポート・権限を確認してください。");
+    process.exitCode = 1;
+  });
   server.listen(config.port, config.host, () => {
     console.log(`local_ocr: http://${config.host}:${config.port}`);
     console.log(`model: ${config.model}`);
@@ -420,38 +441,28 @@ function parseServeArgs(args) {
   return result;
 }
 
-export async function runDoctor(overrides = {}, fetchImpl = fetch) {
+export async function runDoctor(overrides = {}, fetchImpl = fetch, json = false) {
   const config = getConfig(overrides);
-  const checks = [];
-  const majorVersion = Number(process.versions.node.split(".")[0]);
-  checks.push({
-    name: "Node.js 18以上",
-    ok: majorVersion >= 18,
-    detail: process.version,
-  });
-
-  const health = await checkOllama(config, fetchImpl);
-  checks.push({
-    name: "Ollama API",
-    ok: health.ollama,
-    detail: config.ollamaBaseUrl,
-  });
-  checks.push({
-    name: `OCRモデル ${config.model}`,
-    ok: health.modelInstalled,
-    detail: health.modelInstalled ? "インストール済み" : "見つかりません",
-  });
-
-  for (const check of checks) {
-    console.log(`${check.ok ? "OK" : "NG"}  ${check.name}: ${check.detail}`);
+  const report = await collectDiagnostics(config, fetchImpl);
+  const nodeOk = Number(process.versions.node.split(".")[0]) >= 24;
+  if (json) console.log(JSON.stringify(report, null, 2));
+  else {
+    console.log(`${nodeOk ? "OK" : "NG"} Node.js 24以上: ${process.version}`);
+    console.log(`${report.configuration.auth_configured ? "OK" : "NG"} Basic認証設定`);
+    console.log(`${report.configuration.valid ? "OK" : "NG"} 接続先・ポート・タイムアウト・サイズ上限設定`);
+    console.log(`${report.model.ready ? "OK" : "NG"} ${config.model}: ${report.guidance}`);
+    console.log(`OS: ${report.host.os} ${report.host.arch} / RAM: ${(report.host.ram_total_bytes / 2 ** 30).toFixed(1)} GiB / Ollama: ${report.ollama_version ?? "未確認"}`);
+    console.log(report.limits);
+    console.log("問い合わせ用JSON: node --env-file=.env server.mjs doctor --json");
   }
-  return checks.every((check) => check.ok) ? 0 : 1;
+  return nodeOk && report.configuration.auth_configured && report.configuration.valid && report.model.ready ? 0 : 1;
 }
 
 export async function main(args = process.argv.slice(2)) {
   const command = args[0] ?? "serve";
   if (command === "doctor") {
-    return runDoctor();
+    if (args.slice(1).some(arg => arg !== "--json")) throw new Error("doctor のオプションは --json のみです。");
+    return runDoctor({}, fetch, args.includes("--json"));
   }
   if (command === "serve") {
     const options = parseServeArgs(args.slice(1));
@@ -464,8 +475,11 @@ export async function main(args = process.argv.slice(2)) {
 
 const entryPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";
 if (import.meta.url === entryPath) {
-  const exitCode = await main();
-  if (exitCode !== 0) {
-    process.exitCode = exitCode;
+  try {
+    const exitCode = await main();
+    if (exitCode !== 0) process.exitCode = exitCode;
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
   }
 }
